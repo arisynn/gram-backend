@@ -317,34 +317,23 @@ export async function requestTelegramCall(
   } catch (err: any) {
     console.warn('[CALL] phone.RequestCall RPC error:', err.message);
 
-    // Provide friendly error or test fallback
-    const syntheticId = String(Date.now());
-    pendingCallSessions.set(syntheticId, {
-      callId: syntheticId,
-      accessHash: '0',
-      role: 'caller',
-      secretKey: a,
-      gaBuffer,
-      p,
-      g,
-      targetId: userId,
-      isVideo,
-      createdAt: Date.now(),
-    });
+    const rawMsg = String(err?.message || err?.errorMessage || '');
+    let userMsg = 'Gagal melakukan panggilan Telegram.';
+    if (rawMsg.includes('USER_PRIVACY_RESTRICTED')) {
+      userMsg = 'Pengguna membatasi panggilan masuk di pengaturan privasi Telegram-nya.';
+    } else if (rawMsg.includes('PARTICIPANT_VERSION_OUTDATED')) {
+      userMsg = 'Versi aplikasi Telegram penerima belum mendukung protokol panggilan ini.';
+    } else if (rawMsg.includes('CALL_ALREADY_DECLINED')) {
+      userMsg = 'Panggilan telah ditolak oleh penerima.';
+    } else if (rawMsg.includes('PEER_FLOOD')) {
+      userMsg = 'Batas panggilan tercapai (Telegram Flood Limit). Harap tunggu sejenak.';
+    } else if (rawMsg.includes('USER_IS_BOT')) {
+      userMsg = 'Bot Telegram tidak dapat menerima panggilan suara.';
+    } else if (err.message) {
+      userMsg = err.message;
+    }
 
-    return {
-      status: 'ringing',
-      callId: syntheticId,
-      accessHash: '0',
-      phoneCall: {
-        id: syntheticId,
-        accessHash: '0',
-        date: Math.floor(Date.now() / 1000),
-      },
-      video: isVideo,
-      fallback: true,
-      errorNotice: err.message,
-    };
+    throw new Error(userMsg);
   }
 }
 
