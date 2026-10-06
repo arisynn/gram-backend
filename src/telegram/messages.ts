@@ -32,8 +32,20 @@ export async function fetchMessages(
     } else if (msg.document) {
       const doc = msg.document as any;
       const mime = doc.mimeType || '';
+      
+      const stickerAttr = doc.attributes?.find(
+        (a: any) => a instanceof Api.DocumentAttributeSticker || a.className === 'DocumentAttributeSticker'
+      );
+      const isSticker = Boolean(stickerAttr);
+      let stickerType: 'static' | 'animated' | 'video' | undefined;
+      
       let type: MessageMedia['type'] = 'document';
-      if (mime.startsWith('image/')) type = 'photo';
+      if (isSticker) {
+        type = 'sticker';
+        if (mime.includes('webm')) stickerType = 'video';
+        else if (mime.includes('tgsticker')) stickerType = 'animated';
+        else stickerType = 'static';
+      } else if (mime.startsWith('image/')) type = 'photo';
       else if (mime.startsWith('video/')) type = 'video';
       else if (mime.startsWith('audio/ogg') || mime.includes('opus')) type = 'voice';
       else if (mime.startsWith('audio/')) type = 'audio';
@@ -45,12 +57,28 @@ export async function fetchMessages(
         fileSize: doc.size ? Number(doc.size) : undefined,
         mimeType: mime,
         duration: doc.attributes?.find((a: any) => a.duration)?.duration,
+        isSticker,
+        stickerType,
+        altEmoji: stickerAttr?.alt,
       };
     }
 
     const replies = (msg as any).replies;
     const repliesCount = replies ? Number(replies.replies || 0) : undefined;
     const hasComments = replies ? Boolean(replies.comments || (replies.replies && replies.replies > 0)) : undefined;
+
+    // Reactions
+    const reactions: Array<{ emoji: string; count: number; isChosen?: boolean }> = [];
+    if ((msg as any).reactions?.results) {
+      for (const r of (msg as any).reactions.results) {
+        const emoji = r.reaction?.emoticon || '👍';
+        reactions.push({
+          emoji,
+          count: r.count || 1,
+          isChosen: Boolean(r.chosenOrder !== undefined),
+        });
+      }
+    }
 
     // In MTProto, for outgoing message: unread property indicates not yet read by recipient
     const isOut = Boolean(msg.out);
@@ -66,8 +94,10 @@ export async function fetchMessages(
       isOutgoing: isOut,
       isRead,
       isEdited: Boolean((msg as any).editDate),
+      isPinned: Boolean(msg.pinned),
       replyToMsgId: msg.replyTo?.replyToMsgId,
       media,
+      reactions: reactions.length > 0 ? reactions : undefined,
       repliesCount,
       hasComments,
     });
@@ -367,5 +397,63 @@ export async function sendTypingAction(
   } catch {
     return false;
   }
+}
+
+export async function pinChatMessage(
+  client: TelegramClient,
+  chatId: string,
+  messageId: number,
+  silent: boolean = false
+): Promise<void> {
+  const entity = await resolveEntitySafe(client, chatId);
+  if (!entity) throw new Error('Chat tidak ditemukan');
+
+  await client.invoke(
+    new Api.messages.UpdatePinnedMessage({
+      peer: entity,
+      id: messageId,
+      silent,
+      pmOneside: false,
+    })
+  );
+}
+
+export async function unpinChatMessage(
+  client: TelegramClient,
+  chatId: string,
+  messageId?: number
+): Promise<void> {
+  const entity = await resolveEntitySafe(client, chatId);
+  if (!entity) throw new Error('Chat tidak ditemukan');
+
+  await client.invoke(
+    new Api.messages.UpdatePinnedMessage({
+      peer: entity,
+      id: messageId || 0,
+      unpin: true,
+    })
+  );
+}
+
+export async function sendReaction(
+  client: TelegramClient,
+  chatId: string,
+  messageId: number,
+  emoji: string
+): Promise<void> {
+  const entity = await resolveEntitySafe(client, chatId);
+  if (!entity) throw new Error('Chat tidak ditemukan');
+
+  await client.invoke(
+    new Api.messages.SendReaction({
+      peer: entity,
+      msgId: messageId,
+      reaction: [
+        new Api.ReactionEmoji({
+          emoticon: emoji,
+        }),
+      ],
+    })
+  );
 }
 

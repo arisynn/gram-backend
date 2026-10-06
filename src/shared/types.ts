@@ -35,7 +35,7 @@ export interface ChatSummary {
 }
 
 export interface MessageMedia {
-  type: 'photo' | 'video' | 'document' | 'audio' | 'voice';
+  type: 'photo' | 'video' | 'document' | 'audio' | 'voice' | 'sticker';
   url: string;
   fileName?: string;
   fileSize?: number;
@@ -43,6 +43,15 @@ export interface MessageMedia {
   width?: number;
   height?: number;
   duration?: number;
+  isSticker?: boolean;
+  stickerType?: 'static' | 'animated' | 'video';
+  altEmoji?: string;
+}
+
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  isChosen?: boolean;
 }
 
 export interface ChatMessage {
@@ -55,10 +64,12 @@ export interface ChatMessage {
   isOutgoing: boolean;
   isRead?: boolean;
   isEdited?: boolean;
+  isPinned?: boolean;
   replyToMsgId?: number;
   replyToText?: string;
   replyToSender?: string;
   media?: MessageMedia;
+  reactions?: MessageReaction[];
   commentsCount?: number;
   repliesCount?: number;
   hasComments?: boolean;
@@ -68,6 +79,28 @@ export interface ChatMessage {
     isVideo?: boolean;
     isOutgoing?: boolean;
   };
+}
+
+export interface StickerItem {
+  id: string;
+  accessHash: string;
+  alt: string;
+  url: string;
+  type: 'static' | 'animated' | 'video';
+  mimeType: string;
+  width?: number;
+  height?: number;
+}
+
+export interface StickerSet {
+  id: string;
+  title: string;
+  shortName: string;
+  count: number;
+  isAnimated?: boolean;
+  isVideo?: boolean;
+  thumbnailUrl?: string;
+  stickers: StickerItem[];
 }
 
 export type CallType = 'incoming' | 'outgoing' | 'missed' | 'cancelled';

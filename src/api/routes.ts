@@ -15,7 +15,15 @@ import {
   downloadAvatar,
   markChatRead,
   sendTypingAction,
+  pinChatMessage,
+  unpinChatMessage,
+  sendReaction,
 } from '../telegram/messages';
+import {
+  fetchInstalledStickerSets,
+  fetchStickerSetDetails,
+  sendStickerMessage,
+} from '../telegram/stickers';
 import {
   fetchContacts,
   fetchGroupDetail,
@@ -511,6 +519,99 @@ apiRouter.post('/messages/:chatId/read', authMiddleware, async (req: Authenticat
   }
 });
 
+// ==========================================
+// PINNED MESSAGES & REACTIONS
+// ==========================================
+
+apiRouter.post('/messages/:chatId/pin', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const chatId = String(req.params.chatId);
+    const { messageId, silent = false } = req.body;
+    if (!messageId) {
+      res.status(400).json({ error: 'messageId diperlukan.' });
+      return;
+    }
+    await pinChatMessage(req.telegramClient, chatId, Number(messageId), Boolean(silent));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Gagal menyematkan pesan.' });
+  }
+});
+
+apiRouter.post('/messages/:chatId/unpin', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const chatId = String(req.params.chatId);
+    const { messageId } = req.body;
+    await unpinChatMessage(req.telegramClient, chatId, messageId ? Number(messageId) : undefined);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Gagal melepas sematan pesan.' });
+  }
+});
+
+apiRouter.post('/messages/:chatId/reaction', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const chatId = String(req.params.chatId);
+    const { messageId, emoji } = req.body;
+    if (!messageId || !emoji) {
+      res.status(400).json({ error: 'messageId dan emoji diperlukan.' });
+      return;
+    }
+    await sendReaction(req.telegramClient, chatId, Number(messageId), String(emoji));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Gagal mengirim reaksi.' });
+  }
+});
+
+// ==========================================
+// TELEGRAM STICKERS & STICKER PACKS
+// ==========================================
+
+apiRouter.get('/stickers/sets', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const sets = await fetchInstalledStickerSets(req.telegramClient);
+    res.json(sets);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Gagal memuat stiker.', sets: [] });
+  }
+});
+
+apiRouter.get('/stickers/set/:setNameOrId', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const setNameOrId = String(req.params.setNameOrId);
+    const set = await fetchStickerSetDetails(req.telegramClient, setNameOrId);
+    if (!set) {
+      res.status(404).json({ error: 'Pack stiker tidak ditemukan.' });
+      return;
+    }
+    res.json(set);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Gagal memuat detail stiker.' });
+  }
+});
+
+apiRouter.post('/messages/:chatId/sticker', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const chatId = String(req.params.chatId);
+    const { documentId, accessHash, replyToMsgId } = req.body;
+    if (!documentId) {
+      res.status(400).json({ error: 'documentId stiker diperlukan.' });
+      return;
+    }
+    const result = await sendStickerMessage(
+      req.telegramClient,
+      chatId,
+      String(documentId),
+      String(accessHash || '0'),
+      replyToMsgId ? Number(replyToMsgId) : undefined
+    );
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Gagal mengirim stiker.' });
+  }
+});
+
 apiRouter.post('/messages/:chatId/typing', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const chatId = String(req.params.chatId);
@@ -559,6 +660,29 @@ apiRouter.get('/media/message/:chatId/:msgId', authMiddleware, async (req: Authe
       res.setHeader('Content-Disposition', `inline; filename="${media.fileName}"`);
     }
     res.send(media.buffer);
+  } catch {
+    res.status(404).send('Not found');
+  }
+});
+
+apiRouter.get('/media/document/:docId', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const docId = String(req.params.docId);
+    const inputDoc = new Api.InputDocumentFileLocation({
+      id: BigInt(docId) as any,
+      accessHash: BigInt(0) as any,
+      fileReference: Buffer.alloc(0),
+      thumbSize: '',
+    });
+    const downloaded = await req.telegramClient.downloadFile(inputDoc, { workers: 1 });
+    const buffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded as any);
+    if (!buffer || buffer.length === 0) {
+      res.status(404).send('Not found');
+      return;
+    }
+    res.setHeader('Content-Type', 'image/webp');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
   } catch {
     res.status(404).send('Not found');
   }
