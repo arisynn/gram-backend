@@ -3,6 +3,59 @@ import type { CallLog, CallType } from '../shared/types';
 import { resolveEntitySafe } from './messages';
 import crypto from 'crypto';
 
+// Telegram 2048-bit MODP Group 14 DH Prime
+const DH_PRIME_HEX =
+  'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1' +
+  '29024E088A67CC74020BBEA63B139B22514A08798E3404DD' +
+  'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245' +
+  'E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
+  'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D' +
+  'C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F' +
+  '83655D23DCA3AD961C62F356208552BB9ED529077096966D' +
+  '670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B' +
+  'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9' +
+  'DE2BCBF6955817183995497CEA956AE515D2261898FA0510' +
+  '15728E5A8AACAA68FFFFFFFFFFFFFFFF';
+
+const DH_PRIME = BigInt('0x' + DH_PRIME_HEX);
+const DH_GENERATOR = BigInt(3);
+
+function modPow(base: bigint, exp: bigint, mod: bigint): bigint {
+  let res = 1n;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0n) {
+    if (e % 2n === 1n) {
+      res = (res * b) % mod;
+    }
+    b = (b * b) % mod;
+    e = e / 2n;
+  }
+  return res;
+}
+
+function generateDhKeypair(): { a: bigint; ga: bigint; gaBuffer: Buffer; gaHash: Buffer } {
+  // Generate random 256-bit secret exponent a (1 < a < p-1)
+  const aBytes = crypto.randomBytes(32);
+  const a = BigInt('0x' + aBytes.toString('hex'));
+
+  // Calculate g_a = g^a mod p
+  const ga = modPow(DH_GENERATOR, a, DH_PRIME);
+
+  // Convert to 256-byte Big-Endian buffer
+  let gaHex = ga.toString(16);
+  if (gaHex.length % 2 !== 0) gaHex = '0' + gaHex;
+  const rawBuffer = Buffer.from(gaHex, 'hex');
+
+  const gaBuffer = Buffer.alloc(256);
+  rawBuffer.copy(gaBuffer, 256 - rawBuffer.length);
+
+  // g_a_hash is SHA256 of g_a
+  const gaHash = crypto.createHash('sha256').update(gaBuffer).digest();
+
+  return { a, ga, gaBuffer, gaHash };
+}
+
 // Supported modern tgcalls library versions
 const SUPPORTED_LIBRARY_VERSIONS = [
   '10.0.0',
@@ -77,7 +130,6 @@ export async function fetchCallHistory(
         }
       }
 
-      // Determine peer ID
       const peerId = String(msg.peerId?.userId || msg.fromId?.userId || msg.senderId || '');
       const userObj = usersMap.get(peerId);
       const peerName = userObj
@@ -107,8 +159,8 @@ export async function fetchCallHistory(
 
 export async function getTelegramCallConfig(client: TelegramClient): Promise<any> {
   try {
-    const config = await client.invoke(new Api.phone.GetCallConfig());
-    return config;
+    const callConfig = await client.invoke(new Api.phone.GetCallConfig());
+    return callConfig;
   } catch (err) {
     console.error('Error getting Telegram call config:', err);
     return {
@@ -130,15 +182,16 @@ export async function requestTelegramCall(
 
   const inputUser = await client.getInputEntity(entity);
   const randomId = Math.floor(Math.random() * 2147483647);
-  const randomBytes = crypto.randomBytes(32);
-  const gAHash = crypto.createHash('sha256').update(randomBytes).digest();
+  
+  // Real Diffie-Hellman Key generation
+  const { gaHash, gaBuffer } = generateDhKeypair();
 
   try {
     const result = await client.invoke(
       new Api.phone.RequestCall({
         userId: inputUser as any,
         randomId,
-        gAHash,
+        gAHash: gaHash,
         protocol: new Api.PhoneCallProtocol({
           minLayer: 65,
           maxLayer: 93,
@@ -159,7 +212,7 @@ export async function requestTelegramCall(
         date: Math.floor(Date.now() / 1000),
         adminId: BigInt(0),
         participantId: BigInt(userId.replace(/\D/g, '') || '0'),
-        gAOrB: randomBytes,
+        gAOrB: gaBuffer,
       },
       video: isVideo,
       fallback: true,
