@@ -33,37 +33,17 @@ async function startServer() {
   // Mount API router
   app.use('/api', apiRouter);
 
-  // Serve Frontend
-  const isProd = process.env.NODE_ENV === 'production';
+  // Serve Frontend static build if present
   const rootDir = process.cwd();
-
-  if (!isProd) {
-    try {
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-        root: rootDir,
-      });
-      app.use(vite.middlewares);
-    } catch (err) {
-      console.warn('Vite dev middleware could not be loaded, fallback to static dist:', err);
-      const distPath = path.resolve(rootDir, 'dist');
-      if (fs.existsSync(distPath)) {
-        app.use(express.static(distPath));
-        app.get('*', (req, res) => {
-          res.sendFile(path.resolve(distPath, 'index.html'));
-        });
+  const distPath = path.resolve(rootDir, 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
+        return next();
       }
-    }
-  } else {
-    const distPath = path.resolve(rootDir, 'dist');
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      app.get('*', (req, res) => {
-        res.sendFile(path.resolve(distPath, 'index.html'));
-      });
-    }
+      res.sendFile(path.resolve(distPath, 'index.html'));
+    });
   }
 
   // Create HTTP server & attach WebSocket
