@@ -34,6 +34,8 @@ import {
   fetchCallHistory,
   getTelegramCallConfig,
   requestTelegramCall,
+  acceptTelegramCall,
+  confirmTelegramCall,
   discardTelegramCall,
 } from '../telegram/calls';
 import { Api } from 'telegram';
@@ -750,6 +752,35 @@ apiRouter.post('/calls/request', authMiddleware, async (req: AuthenticatedReques
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Gagal melakukan panggilan Telegram.' });
+  }
+});
+
+apiRouter.post('/calls/accept', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { callId, accessHash, isVideo } = req.body;
+    if (!callId) {
+      res.status(400).json({ error: 'callId diperlukan.' });
+      return;
+    }
+    const result = await acceptTelegramCall(req.telegramClient, String(callId), String(accessHash || '0'), Boolean(isVideo));
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Gagal menerima panggilan.' });
+  }
+});
+
+apiRouter.post('/calls/confirm', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { callId, accessHash, gBBase64 } = req.body;
+    if (!callId) {
+      res.status(400).json({ error: 'callId diperlukan.' });
+      return;
+    }
+    const gbBuffer = gBBase64 ? Buffer.from(gBBase64, 'base64') : Buffer.alloc(256);
+    const result = await confirmTelegramCall(req.telegramClient, String(callId), String(accessHash || '0'), gbBuffer);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Gagal mengonfirmasi panggilan.' });
   }
 });
 

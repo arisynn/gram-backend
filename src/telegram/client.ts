@@ -7,6 +7,7 @@ import { Raw } from 'telegram/events/Raw';
 import { Api } from 'telegram';
 import { config, isTelegramConfigured } from '../config/env';
 import { loadUserSession, saveUserSession, deleteUserSession, getAllStoredSessions } from './session';
+import { confirmTelegramCall, getPendingSession } from './calls';
 import type { UserProfile, ChatSummary, ChatMessage, TelegramContact, GroupDetail, ChannelDetail, AccountInfo } from '../shared/types';
 
 export type UpdateListener = (sessionId: string, eventType: string, data: any) => void;
@@ -215,14 +216,46 @@ class TelegramManager {
         ) {
           const callObj = (event as any).phoneCall;
           const callClass = callObj?.className || '';
+          const callId = String(callObj?.id || '');
+          const accessHash = String(callObj?.accessHash || '0');
+
+          console.log('[CALL] Received Telegram UpdatePhoneCall:', callClass, 'callId:', callId);
+
+          if (callClass === 'PhoneCallAccepted') {
+            console.log('[CALL] Callee accepted! Invoking phone.confirmCall with g_a and fingerprint...');
+            const gb = callObj?.gB ? Buffer.from(callObj.gB) : Buffer.alloc(256);
+            confirmTelegramCall(client, callId, accessHash, gb)
+              .then((confirmRes) => {
+                this.notifyUpdate(sessionId, 'phone_call_update', {
+                  status: 'PhoneCallConnected',
+                  callId,
+                  emojis: confirmRes.emojis,
+                  connections: confirmRes.connections,
+                  phoneCall: confirmRes.phoneCall,
+                });
+              })
+              .catch((err) => {
+                console.error('[CALL] Auto-confirm error:', err);
+              });
+          }
+
           this.notifyUpdate(sessionId, 'phone_call_update', {
             status: callClass,
             call: callObj,
-            callId: String(callObj?.id || ''),
+            callId,
             participantId: String(callObj?.participantId || callObj?.adminId || ''),
             isVideo: Boolean(callObj?.video),
             reason: callObj?.reason?.className,
             duration: callObj?.duration || 0,
+            connections: (callObj?.connections || []).map((c: any) => ({
+              id: String(c.id || ''),
+              ip: c.ip,
+              port: c.port,
+              username: c.username,
+              password: c.password,
+              isTurn: Boolean(c.turn),
+              isStun: Boolean(c.stun),
+            })),
           });
         }
       } catch {}

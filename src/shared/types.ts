@@ -72,6 +72,18 @@ export interface ChatMessage {
 
 export type CallType = 'incoming' | 'outgoing' | 'missed' | 'cancelled';
 
+export interface TelegramCallConnection {
+  id: string;
+  ip: string;
+  ipv6?: string;
+  port: number;
+  peerTag?: string;
+  username?: string;
+  password?: string;
+  isTurn?: boolean;
+  isStun?: boolean;
+}
+
 export interface CallLog {
   id: number;
   chatId: string;
