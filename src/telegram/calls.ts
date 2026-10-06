@@ -3,6 +3,22 @@ import type { CallLog, CallType } from '../shared/types';
 import { resolveEntitySafe } from './messages';
 import crypto from 'crypto';
 
+// Supported modern tgcalls library versions
+const SUPPORTED_LIBRARY_VERSIONS = [
+  '10.0.0',
+  '9.0.0',
+  '8.0.0',
+  '7.0.0',
+  '6.0.0',
+  '5.0.0',
+  '4.0.0',
+  '3.0.0',
+  '2.7.7',
+  '1.28.0',
+  '1.17.0',
+  '1.14.0',
+];
+
 export async function fetchCallHistory(
   client: TelegramClient,
   limit: number = 50
@@ -128,7 +144,7 @@ export async function requestTelegramCall(
           maxLayer: 93,
           udpP2p: true,
           udpReflector: true,
-          libraryVersions: ['1.14.0', '1.17.0'],
+          libraryVersions: SUPPORTED_LIBRARY_VERSIONS,
         }),
         video: isVideo,
       })
@@ -173,7 +189,7 @@ export async function acceptTelegramCall(
           maxLayer: 93,
           udpP2p: true,
           udpReflector: true,
-          libraryVersions: ['1.14.0', '1.17.0'],
+          libraryVersions: SUPPORTED_LIBRARY_VERSIONS,
         }),
       })
     );

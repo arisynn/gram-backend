@@ -76,6 +76,9 @@ class TelegramManager {
       const client = new TelegramClient(stringSession, apiId, apiHash, {
         connectionRetries: 5,
         useWSS: false,
+        deviceModel: 'Desktop x64',
+        systemVersion: 'Windows 11',
+        appVersion: '5.10.3',
       });
 
       await client.connect();
@@ -245,6 +248,9 @@ class TelegramManager {
 
     const client = new TelegramClient(new StringSession(''), apiId, apiHash, {
       connectionRetries: 5,
+      deviceModel: 'Desktop x64',
+      systemVersion: 'Windows 11',
+      appVersion: '5.10.3',
     });
 
     await client.connect();
